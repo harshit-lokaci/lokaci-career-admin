@@ -62,7 +62,7 @@ export async function POST(request) {
 		const cleanBaseName = originalName
 			.replace(/\.[^/.]+$/, "")
 			.replace(/[^a-zA-Z0-9_-]/g, "_");
-		const publicId = `${Date.now()}_${cleanBaseName}`;
+		const publicId = `${Date.now()}_${cleanBaseName}.${extension}`;
 
 		// 4. Upload using official Cloudinary SDK upload_stream
 		const cloudinaryResult = await new Promise((resolve, reject) => {
