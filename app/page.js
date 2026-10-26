@@ -28,6 +28,14 @@ export default function DashboardPage() {
 						headers: careerStore.getAuthHeaders(),
 					}),
 				]);
+				if (appsRes.status === 401) {
+					careerStore.logout();
+					if (typeof window !== "undefined") {
+						window.location.replace("/login");
+					}
+					return;
+				}
+
 				const [jobsJson, appsJson] = await Promise.all([
 					jobsRes.json(),
 					appsRes.json(),

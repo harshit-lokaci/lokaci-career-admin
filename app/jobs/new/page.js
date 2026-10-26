@@ -9,6 +9,8 @@ import {
 	RiBriefcaseLine,
 	RiCheckLine,
 	RiDeleteBinLine,
+	RiExternalLinkLine,
+	RiFileCopyLine,
 	RiQuestionLine,
 	RiSaveLine,
 } from "react-icons/ri";
@@ -38,6 +40,22 @@ function JobFormContent() {
 
 	const [errors, setErrors] = useState({});
 	const [isSaving, setIsSaving] = useState(false);
+	const [copiedLink, setCopiedLink] = useState(false);
+
+	const handleCopyPublicLink = async () => {
+		if (!editId) return;
+		const baseUrl =
+			process.env.NEXT_PUBLIC_CAREER_SITE_URL ||
+			"https://lokaci.com";
+		const fullUrl = `${baseUrl.replace(/\/$/, "")}/career/openings/${editId}`;
+		try {
+			await navigator.clipboard.writeText(fullUrl);
+			setCopiedLink(true);
+			setTimeout(() => setCopiedLink(false), 2000);
+		} catch (err) {
+			console.error("Failed to copy public link:", err);
+		}
+	};
 
 	useEffect(() => {
 		if (editId) {
@@ -279,7 +297,7 @@ function JobFormContent() {
 	return (
 		<div className="max-w-4xl mx-auto space-y-6 sm:space-y-8 pb-16">
 			{/* Breadcrumb & Navigation */}
-			<div className="flex items-center justify-between gap-2">
+			<div className="flex flex-wrap items-center justify-between gap-2">
 				<Link
 					href="/jobs"
 					className="inline-flex items-center gap-1.5 sm:gap-2 text-xs font-semibold text-gray-500 hover:text-black transition-colors"
@@ -288,9 +306,44 @@ function JobFormContent() {
 					<span>Back to Jobs</span>
 				</Link>
 
-				<span className="text-[11px] sm:text-xs font-semibold px-2.5 sm:px-3 py-1 rounded-full bg-gray-100 text-gray-700">
-					{isEditMode ? "Editing Role" : "New Opening"}
-				</span>
+				<div className="flex items-center gap-2">
+					{isEditMode && editId && (
+						<>
+							<button
+								type="button"
+								onClick={handleCopyPublicLink}
+								className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+									copiedLink
+										? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+										: "bg-white border border-gray-200 hover:border-black text-gray-700"
+								}`}
+								title="Copy public URL to share"
+							>
+								{copiedLink ? (
+									<RiCheckLine size={13} className="text-emerald-600" />
+								) : (
+									<RiFileCopyLine size={13} />
+								)}
+								<span>{copiedLink ? "Link Copied!" : "Copy Public Link"}</span>
+							</button>
+
+							<a
+								href={`${(process.env.NEXT_PUBLIC_CAREER_SITE_URL || "https://lokaci.com").replace(/\/$/, "")}/career/openings/${editId}`}
+								target="_blank"
+								rel="noopener noreferrer"
+								className="inline-flex items-center gap-1 px-3 py-1 rounded-xl text-xs font-semibold bg-[#F5F5F7] hover:bg-gray-200 text-gray-700 transition-colors"
+								title="Open public job page in new tab"
+							>
+								<span>View Live</span>
+								<RiExternalLinkLine size={12} />
+							</a>
+						</>
+					)}
+
+					<span className="text-[11px] sm:text-xs font-semibold px-2.5 sm:px-3 py-1 rounded-full bg-gray-100 text-gray-700">
+						{isEditMode ? "Editing Role" : "New Opening"}
+					</span>
+				</div>
 			</div>
 
 			{/* Page Header */}

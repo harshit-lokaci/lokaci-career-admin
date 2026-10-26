@@ -1,12 +1,6 @@
 import { NextResponse } from "next/server";
-import { v2 as cloudinary } from "cloudinary";
+import { cloudinary, signCloudinaryResume } from "@/lib/cloudinary";
 import { corsHeaders } from "@/lib/cors";
-
-cloudinary.config({
-	cloud_name: process.env.CLOUDINARY_CLOUD_NAME || "dgazn8zi3",
-	api_key: process.env.CLOUDINARY_API_KEY || "565587288496578",
-	api_secret: process.env.CLOUDINARY_API_SECRET || "Q1iPr8gkAqo_wchKxnJGjlKhkyc",
-});
 
 export async function OPTIONS() {
 	return new Response(null, {
@@ -15,7 +9,7 @@ export async function OPTIONS() {
 	});
 }
 
-// POST /api/upload -> Upload resume PDF/DOCX to Cloudinary via official SDK
+// POST /api/upload -> Upload resume PDF/DOCX to Cloudinary in authenticated (private) mode
 export async function POST(request) {
 	try {
 		const formData = await request.formData();
@@ -64,11 +58,12 @@ export async function POST(request) {
 			.replace(/[^a-zA-Z0-9_-]/g, "_");
 		const publicId = `${Date.now()}_${cleanBaseName}.${extension}`;
 
-		// 4. Upload using official Cloudinary SDK upload_stream
+		// 4. Upload using official Cloudinary SDK in authenticated (private) mode
 		const cloudinaryResult = await new Promise((resolve, reject) => {
 			const stream = cloudinary.uploader.upload_stream(
 				{
 					resource_type: "raw", // Keeps raw PDF/DOC headers intact without transcoding
+					type: "authenticated", // 🔒 Private delivery with signature
 					folder: "lokaci_resumes",
 					public_id: publicId,
 				},
@@ -80,7 +75,7 @@ export async function POST(request) {
 			stream.end(buffer);
 		});
 
-		if (!cloudinaryResult || !cloudinaryResult.secure_url) {
+		if (!cloudinaryResult || !cloudinaryResult.public_id) {
 			return NextResponse.json(
 				{
 					success: false,
@@ -90,10 +85,13 @@ export async function POST(request) {
 			);
 		}
 
+		// Generate signed URL for immediate preview (valid for 2 hours)
+		const signedPreviewUrl = signCloudinaryResume(cloudinaryResult.public_id, 7200);
+
 		return NextResponse.json(
 			{
 				success: true,
-				url: cloudinaryResult.secure_url,
+				url: signedPreviewUrl,
 				publicId: cloudinaryResult.public_id,
 				bytes: cloudinaryResult.bytes,
 				format: extension,

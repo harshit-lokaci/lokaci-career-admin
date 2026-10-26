@@ -5,8 +5,10 @@ import Link from "next/link";
 import {
 	RiAddLine,
 	RiBriefcaseLine,
+	RiCheckLine,
 	RiDeleteBinLine,
 	RiEditLine,
+	RiFileCopyLine,
 	RiSearchLine,
 } from "react-icons/ri";
 import AuthGuard from "@/components/AuthGuard";
@@ -17,6 +19,23 @@ function JobsContent() {
 	const [isLoading, setIsLoading] = useState(true);
 	const [searchQuery, setSearchQuery] = useState("");
 	const [statusFilter, setStatusFilter] = useState("all"); // 'all' | 'active' | 'inactive'
+	const [copiedJobId, setCopiedJobId] = useState(null);
+
+	const handleCopyJobLink = async (jobId) => {
+		const baseUrl =
+			process.env.NEXT_PUBLIC_CAREER_SITE_URL ||
+			"https://lokaci.com";
+		const fullUrl = `${baseUrl.replace(/\/$/, "")}/career/openings/${jobId}`;
+		try {
+			await navigator.clipboard.writeText(fullUrl);
+			setCopiedJobId(jobId);
+			setTimeout(() => {
+				setCopiedJobId(null);
+			}, 2000);
+		} catch (err) {
+			console.error("Failed to copy public link:", err);
+		}
+	};
 
 	const reloadJobs = async () => {
 		try {
@@ -241,6 +260,26 @@ function JobsContent() {
 												</div>
 
 												<div className="flex items-center gap-1">
+													<button
+														type="button"
+														onClick={() => handleCopyJobLink(job.id)}
+														className={`p-2 rounded-lg transition-colors inline-flex items-center justify-center cursor-pointer ${
+															copiedJobId === job.id
+																? "text-emerald-600 bg-emerald-50"
+																: "text-gray-500 hover:text-black hover:bg-gray-100"
+														}`}
+														title={
+															copiedJobId === job.id
+																? "Link copied!"
+																: "Copy Public Job Link"
+														}
+													>
+														{copiedJobId === job.id ? (
+															<RiCheckLine size={16} className="text-emerald-600" />
+														) : (
+															<RiFileCopyLine size={16} />
+														)}
+													</button>
 													<Link
 														href={`/jobs/new?id=${job.id}`}
 														className="p-2 text-gray-600 hover:text-black hover:bg-gray-100 rounded-lg transition-colors inline-flex items-center justify-center cursor-pointer"
@@ -370,7 +409,32 @@ function JobsContent() {
 													</td>
 
 													<td className="py-4 px-6 text-right">
-														<div className="inline-flex items-center gap-2">
+														<div className="inline-flex items-center gap-1.5">
+															{/* Copy Public Link Button */}
+															<button
+																type="button"
+																onClick={() => handleCopyJobLink(job.id)}
+																className={`p-1.5 rounded-lg transition-all cursor-pointer inline-flex items-center justify-center gap-1 text-xs font-semibold ${
+																	copiedJobId === job.id
+																		? "text-emerald-700 bg-emerald-50 border border-emerald-200"
+																		: "text-gray-500 hover:text-black hover:bg-gray-100"
+																}`}
+																title={
+																	copiedJobId === job.id
+																		? "Copied to clipboard!"
+																		: "Copy Public Job Link"
+																}
+															>
+																{copiedJobId === job.id ? (
+																	<>
+																		<RiCheckLine size={15} className="text-emerald-600" />
+																		<span className="text-[11px] text-emerald-700">Copied</span>
+																	</>
+																) : (
+																	<RiFileCopyLine size={16} />
+																)}
+															</button>
+
 															{/* Edit opens dedicated page with ?id= */}
 															<Link
 																href={`/jobs/new?id=${job.id}`}

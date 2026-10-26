@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { corsHeaders } from "@/lib/cors";
 import { getAuthUserFromRequest } from "@/lib/auth";
+import { signCloudinaryResume } from "@/lib/cloudinary";
 
 export async function OPTIONS() {
 	return new Response(null, {
@@ -91,6 +92,7 @@ export async function GET(request) {
 
 			return {
 				...app,
+				resumeUrl: signCloudinaryResume(app.resumeUrl, 7200),
 				city,
 				experience,
 				noticePeriod,

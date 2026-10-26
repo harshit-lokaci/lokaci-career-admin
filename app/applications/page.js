@@ -6,6 +6,7 @@ import {
 	RiBriefcaseLine,
 	RiCheckLine,
 	RiCloseLine,
+	RiDeleteBinLine,
 	RiDownloadLine,
 	RiExternalLinkLine,
 	RiFileTextLine,
@@ -40,56 +41,6 @@ function ApplicationsContent() {
 	const [notesInput, setNotesInput] = useState("");
 	const [isSavingNotes, setIsSavingNotes] = useState(false);
 	const [notesSavedSuccess, setNotesSavedSuccess] = useState(false);
-
-	const reloadData = async () => {
-		try {
-			const [appsRes, jobsRes] = await Promise.all([
-				fetch("/api/applications", {
-					headers: careerStore.getAuthHeaders(),
-				}),
-				fetch("/api/jobs"),
-			]);
-			const [appsJson, jobsJson] = await Promise.all([
-				appsRes.json(),
-				jobsRes.json(),
-			]);
-
-			let loadedApps = careerStore.getApplications();
-			let loadedJobs = careerStore.getJobs();
-
-			if (appsJson.success && Array.isArray(appsJson.data)) {
-				loadedApps = appsJson.data;
-				setApplications(appsJson.data);
-				careerStore.saveApplications(appsJson.data);
-			} else {
-				setApplications(loadedApps);
-			}
-
-			if (jobsJson.success && Array.isArray(jobsJson.data)) {
-				loadedJobs = jobsJson.data;
-				setJobs(jobsJson.data);
-				careerStore.saveJobs(jobsJson.data);
-			} else {
-				setJobs(loadedJobs);
-			}
-
-			const initialId = searchParams.get("id");
-			if (initialId) {
-				const found = loadedApps.find((a) => a.id === initialId);
-				if (found) {
-					handleOpenCandidate(found);
-				}
-			}
-		} catch (err) {
-			console.warn("Falling back to local applications store:", err);
-			setApplications(careerStore.getApplications());
-			setJobs(careerStore.getJobs());
-		}
-	};
-
-	useEffect(() => {
-		reloadData();
-	}, [searchParams]);
 
 	const handleOpenCandidate = (candidate) => {
 		if (closeTimeoutRef.current) {
@@ -147,6 +98,65 @@ function ApplicationsContent() {
 			setIsDrawerOpen(true);
 		}, 15);
 	};
+
+	const reloadData = async () => {
+		try {
+			const [appsRes, jobsRes] = await Promise.all([
+				fetch("/api/applications", {
+					headers: careerStore.getAuthHeaders(),
+				}),
+				fetch("/api/jobs"),
+			]);
+			if (appsRes.status === 401) {
+				careerStore.logout();
+				if (typeof window !== "undefined") {
+					window.location.replace("/login");
+				}
+				return;
+			}
+
+			const [appsJson, jobsJson] = await Promise.all([
+				appsRes.json(),
+				jobsRes.json(),
+			]);
+
+			let loadedApps = careerStore.getApplications();
+			let loadedJobs = careerStore.getJobs();
+
+			if (appsJson.success && Array.isArray(appsJson.data)) {
+				loadedApps = appsJson.data;
+				setApplications(appsJson.data);
+				careerStore.saveApplications(appsJson.data);
+			} else {
+				setApplications(loadedApps);
+			}
+
+			if (jobsJson.success && Array.isArray(jobsJson.data)) {
+				loadedJobs = jobsJson.data;
+				setJobs(jobsJson.data);
+				careerStore.saveJobs(jobsJson.data);
+			} else {
+				setJobs(loadedJobs);
+			}
+
+			const initialId = searchParams.get("id");
+			if (initialId) {
+				const found = loadedApps.find((a) => a.id === initialId);
+				if (found) {
+					handleOpenCandidate(found);
+				}
+			}
+		} catch (err) {
+			console.warn("Falling back to local applications store:", err);
+			setApplications(careerStore.getApplications());
+			setJobs(careerStore.getJobs());
+		}
+	};
+
+	const candidateParamId = searchParams.get("id") || "";
+	useEffect(() => {
+		reloadData();
+	}, [candidateParamId]);
 
 	const handleCloseDrawer = () => {
 		setIsDrawerOpen(false);
@@ -230,6 +240,111 @@ function ApplicationsContent() {
 		} finally {
 			setIsSavingNotes(false);
 		}
+	};
+
+	const handleDeleteApplication = async (appId, candidateName = "this candidate") => {
+		if (
+			!confirm(
+				`Are you sure you want to permanently delete the application of "${candidateName}"? This action cannot be undone.`
+			)
+		) {
+			return;
+		}
+
+		// Optimistic removal
+		setApplications((prev) => prev.filter((a) => a.id !== appId));
+		careerStore.deleteApplication(appId);
+
+		if (selectedCandidate && selectedCandidate.id === appId) {
+			handleCloseDrawer();
+		}
+
+		try {
+			const res = await fetch(`/api/applications/${appId}`, {
+				method: "DELETE",
+				headers: careerStore.getAuthHeaders(),
+			});
+			if (!res.ok) {
+				console.error("Failed to delete application on server");
+				reloadData();
+			}
+		} catch (err) {
+			console.error("Failed to delete application on server:", err);
+			reloadData();
+		}
+	};
+
+	const handleExportCSV = () => {
+		if (!filteredApplications.length) {
+			alert("No candidate applications to export.");
+			return;
+		}
+
+		const headers = [
+			"Candidate ID",
+			"Applied Date",
+			"Candidate Name",
+			"Role Applied",
+			"Status",
+			"Email",
+			"Phone",
+			"City / Location",
+			"Total Experience",
+			"Notice Period",
+			"Current CTC",
+			"Expected CTC",
+			"Resume Link",
+			"LinkedIn",
+			"Portfolio",
+			"HR Notes",
+		];
+
+		const escapeCell = (val) => {
+			if (val === null || val === undefined) return '""';
+			const str = String(val).replace(/"/g, '""');
+			return `"${str}"`;
+		};
+
+		const rows = filteredApplications.map((app) => [
+			escapeCell(app.id),
+			escapeCell((app.appliedAt || "").split("T")[0]),
+			escapeCell(app.fullName),
+			escapeCell(app.jobTitle || app.job?.title || "N/A"),
+			escapeCell(app.status),
+			escapeCell(app.email),
+			escapeCell(app.phone),
+			escapeCell(app.city || app.currentLocation || "N/A"),
+			escapeCell(app.experience || app.experienceYears || "N/A"),
+			escapeCell(app.noticePeriod || "N/A"),
+			escapeCell(app.currentCtc || "N/A"),
+			escapeCell(app.expectedCtc || "N/A"),
+			escapeCell(app.resumeUrl || "N/A"),
+			escapeCell(app.linkedinUrl || ""),
+			escapeCell(app.portfolioUrl || ""),
+			escapeCell(app.notes || ""),
+		]);
+
+		const csvContent =
+			"\uFEFF" +
+			[headers.join(","), ...rows.map((r) => r.join(","))].join("\r\n");
+
+		const blob = new Blob([csvContent], {
+			type: "text/csv;charset=utf-8;",
+		});
+		const url = URL.createObjectURL(blob);
+		const link = document.createElement("a");
+		const dateStr = new Date().toISOString().split("T")[0];
+		const filterSuffix =
+			statusFilter !== "all" ? `_${statusFilter}` : "";
+		link.setAttribute(
+			"download",
+			`lokaci_candidates${filterSuffix}_${dateStr}.csv`
+		);
+		link.setAttribute("href", url);
+		document.body.appendChild(link);
+		link.click();
+		document.body.removeChild(link);
+		URL.revokeObjectURL(url);
 	};
 
 	const getQuestionDetails = (qKey, idx) => {
@@ -323,8 +438,18 @@ function ApplicationsContent() {
 						</p>
 					</div>
 
-					<div className="flex items-center gap-2">
-						<span className="text-xs text-gray-500">
+					<div className="flex flex-wrap items-center gap-2.5">
+						<button
+							type="button"
+							onClick={handleExportCSV}
+							disabled={filteredApplications.length === 0}
+							className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-black hover:bg-gray-800 text-white text-xs font-semibold shadow-xs transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+							title="Export currently filtered candidates to Excel / CSV"
+						>
+							<RiDownloadLine size={15} />
+							<span>Export CSV ({filteredApplications.length})</span>
+						</button>
+						<span className="text-xs text-gray-500 pl-1 border-l border-gray-200">
 							Total: <strong>{applications.length}</strong>
 						</span>
 					</div>
@@ -437,16 +562,29 @@ function ApplicationsContent() {
 											<span className="text-gray-400">
 												Applied: {(app.appliedAt || "").split("T")[0]}
 											</span>
-											<button
-												type="button"
-												onClick={(e) => {
-													e.stopPropagation();
-													handleOpenCandidate(app);
-												}}
-												className="px-3 py-1.5 rounded-lg bg-black text-white text-xs font-semibold hover:bg-gray-800 transition-colors cursor-pointer"
-											>
-												Review Candidate →
-											</button>
+											<div className="flex items-center gap-2">
+												<button
+													type="button"
+													onClick={(e) => {
+														e.stopPropagation();
+														handleDeleteApplication(app.id, app.fullName);
+													}}
+													className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+													title="Delete candidate application"
+												>
+													<RiDeleteBinLine size={16} />
+												</button>
+												<button
+													type="button"
+													onClick={(e) => {
+														e.stopPropagation();
+														handleOpenCandidate(app);
+													}}
+													className="px-3 py-1.5 rounded-lg bg-black text-white text-xs font-semibold hover:bg-gray-800 transition-colors cursor-pointer"
+												>
+													Review Candidate →
+												</button>
+											</div>
 										</div>
 									</div>
 								))}
@@ -503,16 +641,29 @@ function ApplicationsContent() {
 												</td>
 
 												<td className="py-4 px-6 text-right">
-													<button
-														type="button"
-														onClick={(e) => {
-															e.stopPropagation();
-															handleOpenCandidate(app);
-														}}
-														className="px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-black hover:text-white text-xs font-semibold text-gray-800 transition-colors cursor-pointer"
-													>
-														Review
-													</button>
+													<div className="inline-flex items-center gap-1.5">
+														<button
+															type="button"
+															onClick={(e) => {
+																e.stopPropagation();
+																handleOpenCandidate(app);
+															}}
+															className="px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-black hover:text-white text-xs font-semibold text-gray-800 transition-colors cursor-pointer"
+														>
+															Review
+														</button>
+														<button
+															type="button"
+															onClick={(e) => {
+																e.stopPropagation();
+																handleDeleteApplication(app.id, app.fullName);
+															}}
+															className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+															title="Delete candidate application"
+														>
+															<RiDeleteBinLine size={16} />
+														</button>
+													</div>
 												</td>
 											</tr>
 										))}
@@ -564,14 +715,29 @@ function ApplicationsContent() {
 								</p>
 							</div>
 
-							<button
-								type="button"
-								onClick={handleCloseDrawer}
-								className="p-2 -mr-1 text-gray-400 hover:text-black hover:bg-gray-200/60 rounded-xl transition-all cursor-pointer shrink-0"
-								title="Close drawer"
-							>
-								<RiCloseLine size={22} />
-							</button>
+							<div className="flex items-center gap-1 shrink-0">
+								<button
+									type="button"
+									onClick={() =>
+										handleDeleteApplication(
+											selectedCandidate.id,
+											selectedCandidate.fullName
+										)
+									}
+									className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all cursor-pointer"
+									title="Delete this candidate application"
+								>
+									<RiDeleteBinLine size={19} />
+								</button>
+								<button
+									type="button"
+									onClick={handleCloseDrawer}
+									className="p-2 -mr-1 text-gray-400 hover:text-black hover:bg-gray-200/60 rounded-xl transition-all cursor-pointer"
+									title="Close drawer"
+								>
+									<RiCloseLine size={22} />
+								</button>
+							</div>
 						</div>
 
 						{/* Drawer Scrollable Content */}
@@ -881,6 +1047,31 @@ function ApplicationsContent() {
 										Visible only to hiring team
 									</span>
 								</div>
+							</div>
+
+							{/* Danger Zone: Delete Application */}
+							<div className="pt-4 border-t border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-red-50/40 p-3.5 rounded-2xl border border-red-100">
+								<div>
+									<h5 className="text-xs font-bold text-red-950">
+										Delete Application
+									</h5>
+									<p className="text-[11px] text-red-600/80">
+										Permanently remove this candidate and notes from AWS PostgreSQL.
+									</p>
+								</div>
+								<button
+									type="button"
+									onClick={() =>
+										handleDeleteApplication(
+											selectedCandidate.id,
+											selectedCandidate.fullName
+										)
+									}
+									className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-white border border-red-200 hover:bg-red-600 hover:text-white text-red-700 text-xs font-semibold transition-all cursor-pointer shadow-2xs shrink-0"
+								>
+									<RiDeleteBinLine size={14} />
+									<span>Delete Candidate</span>
+								</button>
 							</div>
 						</div>
 					</div>
